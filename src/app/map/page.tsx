@@ -3,6 +3,10 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useFoodMapStore, SavedSpot } from "@/lib/store";
+import { useFriendsStore, FriendSpot } from "@/lib/friends-store";
+import SignInGate from "@/components/SignInGate";
+import FriendsPanel from "@/components/FriendsPanel";
+import DiscoveryFeed from "@/components/DiscoveryFeed";
 import SpotDetailModal from "@/components/SpotDetailModal";
 import PlanPanel, { type PlanResult } from "@/components/PlanPanel";
 import Link from "next/link";
@@ -12,9 +16,16 @@ const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 type SortOption = "newest" | "oldest" | "name" | "price-low" | "price-high" | "rating";
 type TriedFilter = "all" | "tried" | "want-to-go";
 
-export default function MapPage() {
+function MapPageInner() {
   const { savedSpots, removeSpot, toggleTried, setRating, collections, setCollection } =
     useFoodMapStore();
+  const allRemoteSpots = useFriendsStore((s) => s.spots);
+  const me = useFriendsStore((s) => s.me);
+  const friendSpots = useMemo(
+    () => (me ? allRemoteSpots.filter((s) => s.owner !== me.id) : allRemoteSpots),
+    [allRemoteSpots, me],
+  );
+  const incomingCount = useFriendsStore((s) => s.incoming.length);
   const [activeSpot, setActiveSpot] = useState<SavedSpot | null>(null);
   const [modalSpot, setModalSpot] = useState<SavedSpot | null>(null);
   const [search, setSearch] = useState("");
@@ -22,6 +33,9 @@ export default function MapPage() {
   const [randomPick, setRandomPick] = useState<SavedSpot | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [plan, setPlan] = useState<PlanResult | null>(null);
+  const [friendsOpen, setFriendsOpen] = useState(false);
+  const [feedOpen, setFeedOpen] = useState(false);
+  const [flyTo, setFlyTo] = useState<[number, number] | null>(null);
   const listRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Filter state
@@ -175,13 +189,18 @@ export default function MapPage() {
     window.open(url, "_blank");
   };
 
-  if (savedSpots.length === 0) {
+  const onPickFriendSpot = (sp: FriendSpot) => {
+    setFlyTo([sp.lat, sp.lng]);
+    setFeedOpen(false);
+  };
+
+  if (savedSpots.length === 0 && friendSpots.length === 0) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center px-4">
         <span className="text-6xl mb-4">🗺️</span>
-        <h2 className="text-white text-xl font-bold mb-2">No saved spots yet</h2>
+        <h2 className="text-white text-xl font-bold mb-2">No spots yet</h2>
         <p className="text-gray-400 text-center mb-6">
-          Go save some spots from the feed and they&apos;ll show up here!
+          Capture a spot, save one from the feed, or add a friend to see theirs.
         </p>
         <Link
           href="/"
@@ -205,6 +224,27 @@ export default function MapPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setFeedOpen((v) => !v); setFriendsOpen(false); }}
+              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full transition-colors ${
+                feedOpen ? "bg-[#fe2c55] text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              📡 Feed
+            </button>
+            <button
+              onClick={() => { setFriendsOpen((v) => !v); setFeedOpen(false); }}
+              className={`relative flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full transition-colors ${
+                friendsOpen ? "bg-[#fe2c55] text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+              }`}
+            >
+              👥 Friends
+              {incomingCount > 0 && (
+                <span className="bg-red-500 text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                  {incomingCount}
+                </span>
+              )}
+            </button>
             {/* Plan my night */}
             <button
               onClick={() => setPlanOpen((v) => !v)}
@@ -400,6 +440,8 @@ export default function MapPage() {
             activeSpot={activeSpot}
             onMarkerClick={(spot) => setActiveSpot(spot)}
             route={plan ? { stops: plan.orderedStops, polyline: plan.polyline } : null}
+            friendSpots={friendSpots}
+            flyToCoord={flyTo}
           />
         </div>
 
@@ -540,6 +582,18 @@ export default function MapPage() {
         <SpotDetailModal spot={modalSpot} onClose={() => setModalSpot(null)} />
       )}
 
+      {friendsOpen && (
+        <div className="fixed inset-y-0 right-0 w-full sm:w-[340px] z-40 shadow-2xl">
+          <FriendsPanel onClose={() => setFriendsOpen(false)} />
+        </div>
+      )}
+
+      {feedOpen && (
+        <div className="fixed inset-y-0 right-0 w-full sm:w-[340px] z-40 shadow-2xl">
+          <DiscoveryFeed onPick={onPickFriendSpot} onClose={() => setFeedOpen(false)} />
+        </div>
+      )}
+
       {/* Plan panel */}
       {planOpen && (
         <div className="fixed inset-y-0 right-0 w-full sm:w-[380px] z-40 shadow-2xl">
@@ -552,6 +606,14 @@ export default function MapPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MapPage() {
+  return (
+    <SignInGate>
+      <MapPageInner />
+    </SignInGate>
   );
 }
 

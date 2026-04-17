@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { useFoodMapStore } from "@/lib/store";
+import { useFriendsStore } from "@/lib/friends-store";
 import type { ExtractedSpot } from "@/lib/ai";
 
 type Stage = "pick" | "extracting" | "confirm" | "saving";
@@ -14,6 +15,9 @@ interface Props {
 
 export default function CaptureSheet({ open, onClose }: Props) {
   const addSpot = useFoodMapStore((s) => s.addSpot);
+  const publishSpot = useFriendsStore((s) => s.publishSpot);
+  const me = useFriendsStore((s) => s.me);
+  const [shareToFriends, setShareToFriends] = useState(true);
   const [stage, setStage] = useState<Stage>("pick");
   const [previews, setPreviews] = useState<string[]>([]);
   const [extracted, setExtracted] = useState<ExtractedSpot | null>(null);
@@ -132,6 +136,28 @@ export default function CaptureSheet({ open, onClose }: Props) {
       note: note.trim(),
     });
 
+    if (shareToFriends && me && (lat !== 0 || lng !== 0)) {
+      try {
+        await publishSpot({
+          name: name.trim(),
+          cuisine: cuisine.trim() || null,
+          lat,
+          lng,
+          neighborhood: neighborhood || null,
+          city: city || null,
+          dishes,
+          vibe_tags: extracted?.vibe_tags ?? [],
+          price_tier: extracted?.price_tier ?? null,
+          notes: note.trim() || null,
+          website_url: null,
+        });
+      } catch (err) {
+        toast.error(`Saved locally, share failed: ${err instanceof Error ? err.message : err}`);
+      }
+    } else if (shareToFriends && me) {
+      toast("Couldn't geocode — not shared with friends", { icon: "⚠️" });
+    }
+
     toast.success(`Saved ${name.trim()}!`);
     close();
   };
@@ -233,6 +259,17 @@ export default function CaptureSheet({ open, onClose }: Props) {
                     </span>
                   ))}
                 </div>
+              )}
+              {me && (
+                <label className="flex items-center gap-2 text-sm text-gray-300 pt-1">
+                  <input
+                    type="checkbox"
+                    checked={shareToFriends}
+                    onChange={(e) => setShareToFriends(e.target.checked)}
+                    className="accent-[#fe2c55]"
+                  />
+                  Share with friends (@{me.handle})
+                </label>
               )}
               <div className="flex gap-2 pt-2">
                 <button

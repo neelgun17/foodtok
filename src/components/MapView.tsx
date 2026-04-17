@@ -4,7 +4,18 @@ import { useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from "react-leaflet";
 import L from "leaflet";
 import { SavedSpot } from "@/lib/store";
+import { FriendSpot } from "@/lib/friends-store";
 import "leaflet/dist/leaflet.css";
+
+function coloredPinIcon(color: string): L.DivIcon {
+  return L.divIcon({
+    className: "friend-pin",
+    html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;background:${color};transform:rotate(-45deg);border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 22],
+    popupAnchor: [0, -20],
+  });
+}
 
 // Fix default marker icon issue with Next.js/webpack
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -42,6 +53,14 @@ function FlyToSpot({ spot }: { spot: SavedSpot | null }) {
   return null;
 }
 
+function FlyToCoord({ coord }: { coord: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.flyTo(coord, 14, { duration: 0.8 });
+  }, [coord, map]);
+  return null;
+}
+
 function FitBounds({ coords, signature }: { coords: [number, number][]; signature: string }) {
   const map = useMap();
   useEffect(() => {
@@ -65,9 +84,11 @@ interface MapViewProps {
     stops: SavedSpot[];
     polyline: LatLng[];
   } | null;
+  friendSpots?: FriendSpot[];
+  flyToCoord?: LatLng | null;
 }
 
-export default function MapView({ spots, activeSpot, onMarkerClick, route }: MapViewProps) {
+export default function MapView({ spots, activeSpot, onMarkerClick, route, friendSpots, flyToCoord }: MapViewProps) {
   const mappable = useMemo(
     () => spots.filter((s) => s.location.lat !== 0 || s.location.lng !== 0),
     [spots],
@@ -78,13 +99,21 @@ export default function MapView({ spots, activeSpot, onMarkerClick, route }: Map
     [route],
   );
 
+  const friendMappable = useMemo(
+    () => (friendSpots ?? []).filter((s) => s.lat !== 0 || s.lng !== 0),
+    [friendSpots],
+  );
+
   const fitCoords: LatLng[] = hasRoute
     ? route!.polyline
-    : mappable.map((s) => [s.location.lat, s.location.lng]);
+    : [
+        ...mappable.map((s) => [s.location.lat, s.location.lng] as LatLng),
+        ...friendMappable.map((s) => [s.lat, s.lng] as LatLng),
+      ];
 
   const fitSignature = hasRoute
     ? `route:${route!.stops.map((s) => s.savedId).join(",")}:${route!.polyline.length}`
-    : `spots:${mappable.map((s) => s.savedId).join(",")}`;
+    : `spots:${mappable.map((s) => s.savedId).join(",")}|friends:${friendMappable.map((s) => s.id).join(",")}`;
 
   return (
     <MapContainer
@@ -99,6 +128,23 @@ export default function MapView({ spots, activeSpot, onMarkerClick, route }: Map
       />
       <FitBounds coords={fitCoords} signature={fitSignature} />
       <FlyToSpot spot={activeSpot && (activeSpot.location.lat !== 0 || activeSpot.location.lng !== 0) ? activeSpot : null} />
+      {flyToCoord && <FlyToCoord coord={flyToCoord} />}
+
+      {friendMappable.map((sp) => (
+        <Marker
+          key={`friend-${sp.id}`}
+          position={[sp.lat, sp.lng]}
+          icon={coloredPinIcon(sp.ownerColor)}
+          opacity={hasRoute ? 0.5 : 1}
+        >
+          <Popup>
+            <strong>{sp.name}</strong>
+            <br />
+            <span style={{ color: sp.ownerColor }}>@{sp.ownerHandle}</span>
+            {sp.dishes.length > 0 && <><br />{sp.dishes.join(", ")}</>}
+          </Popup>
+        </Marker>
+      ))}
 
       {mappable
         .filter((s) => !routeIds.has(s.savedId))
