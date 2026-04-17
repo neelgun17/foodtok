@@ -53,6 +53,7 @@ interface MapViewProps {
 }
 
 export default function MapView({ spots, activeSpot, onMarkerClick }: MapViewProps) {
+  const mappable = spots.filter((s) => s.location.lat !== 0 || s.location.lng !== 0);
   return (
     <MapContainer
       center={[39.5, -98.35]}
@@ -64,9 +65,9 @@ export default function MapView({ spots, activeSpot, onMarkerClick }: MapViewPro
         attribution='&copy; <a href="https://www.openstreetmap.org/">OSM</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      <FitBounds spots={spots} />
-      <FlyToSpot spot={activeSpot} />
-      {spots.map((spot) => (
+      <FitBounds spots={mappable} />
+      <FlyToSpot spot={activeSpot && (activeSpot.location.lat !== 0 || activeSpot.location.lng !== 0) ? activeSpot : null} />
+      {mappable.map((spot) => (
         <Marker
           key={spot.savedId}
           position={[spot.location.lat, spot.location.lng]}

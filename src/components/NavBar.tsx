@@ -2,11 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { useFoodMapStore } from "@/lib/store";
+import CaptureSheet from "./CaptureSheet";
 
 export default function NavBar() {
   const pathname = usePathname();
   const { savedSpots } = useFoodMapStore();
+  const [captureOpen, setCaptureOpen] = useState(false);
 
   const navItems = [
     { href: "/", icon: "🏠", label: "For You", activeMatch: "/" },
@@ -21,6 +24,14 @@ export default function NavBar() {
           <span className="text-red-500">🍽</span> FoodTok
         </h1>
       </div>
+
+      {/* Capture button */}
+      <button
+        onClick={() => setCaptureOpen(true)}
+        className="mb-4 flex items-center gap-2 bg-[#fe2c55] hover:bg-[#e02650] text-white rounded-lg px-3 py-2.5 font-semibold text-sm transition-colors"
+      >
+        <span className="text-lg leading-none">+</span> Capture Spot
+      </button>
 
       {/* Navigation */}
       <nav className="flex flex-col gap-1 flex-1">
@@ -53,6 +64,7 @@ export default function NavBar() {
         <p className="text-gray-600 text-xs">TikTok Food Discovery</p>
         <p className="text-gray-700 text-[10px] mt-1">Demo App</p>
       </div>
+      <CaptureSheet open={captureOpen} onClose={() => setCaptureOpen(false)} />
     </aside>
   );
 }

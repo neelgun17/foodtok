@@ -29,6 +29,7 @@ interface FoodMapStore {
   savedSpots: SavedSpot[];
   collections: string[];
   saveSpot: (spot: Omit<SavedSpot, "savedId" | "savedAt" | "note" | "tried" | "rating" | "collection">) => void;
+  addSpot: (spot: Omit<SavedSpot, "savedId" | "savedAt" | "tried" | "rating" | "collection"> & { note?: string }) => SavedSpot;
   removeSpot: (savedId: string) => void;
   updateNote: (savedId: string, note: string) => void;
   toggleTried: (savedId: string) => void;
@@ -60,6 +61,19 @@ export const useFoodMapStore = create<FoodMapStore>()(
             },
           ],
         }));
+      },
+      addSpot: (spot) => {
+        const newSpot: SavedSpot = {
+          ...spot,
+          savedId: `saved-${Date.now()}`,
+          savedAt: new Date().toISOString(),
+          note: spot.note ?? "",
+          tried: false,
+          rating: 0,
+          collection: "",
+        };
+        set((state) => ({ savedSpots: [...state.savedSpots, newSpot] }));
+        return newSpot;
       },
       removeSpot: (savedId) =>
         set((state) => ({
