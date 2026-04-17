@@ -4,6 +4,7 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { useFoodMapStore, SavedSpot } from "@/lib/store";
 import SpotDetailModal from "@/components/SpotDetailModal";
+import PlanPanel, { type PlanResult } from "@/components/PlanPanel";
 import Link from "next/link";
 
 const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
@@ -19,6 +20,8 @@ export default function MapPage() {
   const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [randomPick, setRandomPick] = useState<SavedSpot | null>(null);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [plan, setPlan] = useState<PlanResult | null>(null);
   const listRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   // Filter state
@@ -202,6 +205,18 @@ export default function MapPage() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Plan my night */}
+            <button
+              onClick={() => setPlanOpen((v) => !v)}
+              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full transition-colors ${
+                planOpen || plan
+                  ? "bg-[#fe2c55] text-white"
+                  : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+              }`}
+              title="Plan my night"
+            >
+              🗓️ Plan Night
+            </button>
             {/* Random pick */}
             <button
               onClick={handleRandomPick}
@@ -384,6 +399,7 @@ export default function MapPage() {
             spots={filtered}
             activeSpot={activeSpot}
             onMarkerClick={(spot) => setActiveSpot(spot)}
+            route={plan ? { stops: plan.orderedStops, polyline: plan.polyline } : null}
           />
         </div>
 
@@ -522,6 +538,18 @@ export default function MapPage() {
       {/* Detail Modal */}
       {modalSpot && (
         <SpotDetailModal spot={modalSpot} onClose={() => setModalSpot(null)} />
+      )}
+
+      {/* Plan panel */}
+      {planOpen && (
+        <div className="fixed inset-y-0 right-0 w-full sm:w-[380px] z-40 shadow-2xl">
+          <PlanPanel
+            spots={savedSpots}
+            plan={plan}
+            onPlan={setPlan}
+            onClose={() => setPlanOpen(false)}
+          />
+        </div>
       )}
     </div>
   );
