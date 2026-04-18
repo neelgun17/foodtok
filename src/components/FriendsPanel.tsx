@@ -11,6 +11,8 @@ import {
 } from "@/data/mockContacts";
 import { useFriendsStore } from "@/lib/friends-store";
 
+const DEMO_AUTO_ACCEPT_HANDLE = "mayaeats";
+
 export default function FriendsPanel({ onClose }: { onClose: () => void }) {
   const { me, friends, incoming, outgoing, sendRequest, acceptRequest, rejectRequest } =
     useFriendsStore();
@@ -20,6 +22,7 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
   const [importingContacts, setImportingContacts] = useState(false);
   const [requestedMatches, setRequestedMatches] = useState<Set<string>>(new Set());
   const [invitedContacts, setInvitedContacts] = useState<Set<string>>(new Set());
+  const [demoAcceptedMatches, setDemoAcceptedMatches] = useState<Set<string>>(new Set());
 
   const submit = async () => {
     const clean = handle.trim();
@@ -66,7 +69,20 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
   };
 
   const requestMatchedFriend = (friend: MockMatchedFriend) => {
-    if (requestedMatches.has(friend.id) || isKnownProfile(friend.handle, friends, incoming, outgoing)) {
+    if (
+      requestedMatches.has(friend.id) ||
+      demoAcceptedMatches.has(friend.id) ||
+      isKnownProfile(friend.handle, friends, incoming, outgoing)
+    ) {
+      return;
+    }
+    if (friend.handle === DEMO_AUTO_ACCEPT_HANDLE) {
+      setDemoAcceptedMatches((current) => {
+        const next = new Set(current);
+        next.add(friend.id);
+        return next;
+      });
+      toast.success(`@${friend.handle} auto-accepted for the demo`);
       return;
     }
     setRequestedMatches((current) => {
@@ -87,8 +103,25 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
     toast.success(`Invite link prepared for ${contact.name}`);
   };
 
+  const demoFriends = mockMatchedFriends.filter((friend) => demoAcceptedMatches.has(friend.id));
   const matchedPending = mockMatchedFriends.filter((friend) => requestedMatches.has(friend.id));
-  const availableMatches = mockMatchedFriends.filter((friend) => !requestedMatches.has(friend.id));
+  const availableMatches = mockMatchedFriends.filter(
+    (friend) => !requestedMatches.has(friend.id) && !demoAcceptedMatches.has(friend.id),
+  );
+  const allFriends = [
+    ...friends.map((friend) => ({
+      id: friend.id,
+      handle: friend.handle,
+      color: friend.color,
+      isDemo: false,
+    })),
+    ...demoFriends.map((friend) => ({
+      id: friend.id,
+      handle: friend.handle,
+      color: friend.color,
+      isDemo: true,
+    })),
+  ];
 
   return (
     <div className="h-full bg-gray-950 text-white flex flex-col border-l border-gray-800">
@@ -263,17 +296,18 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
           </Section>
         )}
 
-        <Section title={`Friends (${friends.length})`}>
-          {friends.length === 0 && (
+        <Section title={`Friends (${allFriends.length})`}>
+          {allFriends.length === 0 && (
             <p className="text-gray-500 text-xs">
               No friends yet. Import contacts or share your handle:{" "}
               <span className="text-white">@{me?.handle}</span>
             </p>
           )}
-          {friends.map((p) => (
+          {allFriends.map((p) => (
             <div key={p.id} className="flex items-center gap-2">
               <Dot color={p.color} />
               <span className="flex-1 text-sm">@{p.handle}</span>
+              {p.isDemo && <StatusPill label="demo" />}
             </div>
           ))}
         </Section>
@@ -339,6 +373,7 @@ function getRelationshipState(
   outgoing: { handle: string }[],
 ) {
   if (friends.some((profile) => profile.handle === handle)) return "friends";
+  if (handle === DEMO_AUTO_ACCEPT_HANDLE) return null;
   if (incoming.some((profile) => profile.handle === handle)) return "incoming";
   if (outgoing.some((profile) => profile.handle === handle)) return "pending";
   return null;
