@@ -29,7 +29,7 @@ function MapPageInner() {
   const [activeSpot, setActiveSpot] = useState<SavedSpot | null>(null);
   const [modalSpot, setModalSpot] = useState<SavedSpot | null>(null);
   const [search, setSearch] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [randomPick, setRandomPick] = useState<SavedSpot | null>(null);
   const [planOpen, setPlanOpen] = useState(false);
   const [plan, setPlan] = useState<PlanResult | null>(null);
