@@ -9,6 +9,9 @@ import type { ExtractedSpot } from "@/lib/ai";
 
 type Stage = "pick" | "library" | "extracting" | "confirm" | "saving";
 
+const MAX_EXTRACT_TOTAL_BYTES = 4 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION = 1600;
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -103,13 +106,23 @@ export default function CaptureSheet({ open, onClose }: Props) {
   const runExtraction = async (files: File[]) => {
     setStage("extracting");
     setError(null);
-    previews.forEach((url) => URL.revokeObjectURL(url));
-    setPreviews(files.map((f) => URL.createObjectURL(f)));
     try {
+      const prepared = await prepareImagesForUpload(files);
+      const totalBytes = prepared.reduce((sum, file) => sum + file.size, 0);
+      if (totalBytes > MAX_EXTRACT_TOTAL_BYTES) {
+        throw new Error("Capture is too large for live deploy. Use 1-2 photos or smaller images.");
+      }
+
+      previews.forEach((url) => URL.revokeObjectURL(url));
+      setPreviews(prepared.map((f) => URL.createObjectURL(f)));
+
       const form = new FormData();
-      files.forEach((f) => form.append("images", f));
+      prepared.forEach((f) => form.append("images", f));
       const res = await fetch("/api/extract", { method: "POST", body: form });
       if (!res.ok) {
+        if (res.status === 413) {
+          throw new Error("Capture is too large for the deployed app. Use fewer or smaller photos.");
+        }
         const body = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(body.error || "Extraction failed");
       }
@@ -437,13 +450,14 @@ async function extractKeyframes(file: File, count: number): Promise<File[]> {
         for (let i = 0; i < count; i++) {
           const t = duration * ((i + 1) / (count + 1));
           await seek(video, t);
-          canvas.width = video.videoWidth;
-          canvas.height = video.videoHeight;
+          const { width, height } = fitWithin(video.videoWidth, video.videoHeight, MAX_IMAGE_DIMENSION);
+          canvas.width = width;
+          canvas.height = height;
           const ctx = canvas.getContext("2d");
           if (!ctx) throw new Error("canvas 2d unavailable");
-          ctx.drawImage(video, 0, 0);
+          ctx.drawImage(video, 0, 0, width, height);
           const blob: Blob = await new Promise((res, rej) =>
-            canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), "image/jpeg", 0.85),
+            canvas.toBlob((b) => (b ? res(b) : rej(new Error("toBlob failed"))), "image/jpeg", 0.78),
           );
           frames.push(new File([blob], `frame-${i}.jpg`, { type: "image/jpeg" }));
         }
@@ -470,4 +484,78 @@ function seek(video: HTMLVideoElement, time: number): Promise<void> {
     video.addEventListener("seeked", handler);
     video.currentTime = time;
   });
+}
+
+async function prepareImagesForUpload(files: File[]): Promise<File[]> {
+  return Promise.all(files.map((file) => compressImageForUpload(file)));
+}
+
+async function compressImageForUpload(file: File): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+
+  const image = await loadImage(file);
+  const { width, height } = fitWithin(image.naturalWidth, image.naturalHeight, MAX_IMAGE_DIMENSION);
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return file;
+  ctx.drawImage(image, 0, 0, width, height);
+
+  const attempts = [0.82, 0.72, 0.62];
+  let bestBlob: Blob | null = null;
+
+  for (const quality of attempts) {
+    const blob = await canvasToBlob(canvas, quality);
+    if (!bestBlob || blob.size < bestBlob.size) {
+      bestBlob = blob;
+    }
+    if (blob.size <= 900 * 1024) break;
+  }
+
+  if (!bestBlob) return file;
+  if (bestBlob.size >= file.size && width === image.naturalWidth && height === image.naturalHeight) {
+    return file;
+  }
+
+  const name = file.name.replace(/\.[^.]+$/, "") || "capture";
+  return new File([bestBlob], `${name}.jpg`, { type: "image/jpeg" });
+}
+
+function loadImage(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`Failed to read image: ${file.name}`));
+    };
+    img.src = url;
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error("Failed to encode image"));
+    }, "image/jpeg", quality);
+  });
+}
+
+function fitWithin(width: number, height: number, maxDimension: number) {
+  const largest = Math.max(width, height);
+  if (largest <= maxDimension) {
+    return { width, height };
+  }
+  const scale = maxDimension / largest;
+  return {
+    width: Math.max(1, Math.round(width * scale)),
+    height: Math.max(1, Math.round(height * scale)),
+  };
 }
