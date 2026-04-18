@@ -1,0 +1,18 @@
+Franklin Barbecue demo capture assets
+
+1. storefront-line.jpg
+Source: Wikimedia Commons - "Franklin Barbecue - Austin.jpg"
+URL: https://commons.wikimedia.org/wiki/File:Franklin_Barbecue_-_Austin.jpg
+License: CC BY 2.0
+Author: Carlos Pacheco
+
+2. storefront-open.jpg
+Source: Wikimedia Commons - "Franklin Barbecue Austin About to Open.jpg"
+URL: https://commons.wikimedia.org/wiki/File:Franklin_Barbecue_Austin_About_to_Open.jpg
+License: CC BY 4.0
+Author: Larry D. Moore
+
+3. plate.webp
+Source: Franklin Barbecue official website hero image
+URL: https://franklinbbq.com/
+Use: bundled for local demo use in the Capture Spot flow

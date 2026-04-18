@@ -2,6 +2,13 @@
 
 import { useState } from "react";
 import toast from "react-hot-toast";
+import {
+  mockInviteContacts,
+  mockMatchedFriends,
+  totalMockContactsImported,
+  type MockInviteContact,
+  type MockMatchedFriend,
+} from "@/data/mockContacts";
 import { useFriendsStore } from "@/lib/friends-store";
 
 export default function FriendsPanel({ onClose }: { onClose: () => void }) {
@@ -9,6 +16,10 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
     useFriendsStore();
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [contactsImported, setContactsImported] = useState(false);
+  const [importingContacts, setImportingContacts] = useState(false);
+  const [requestedMatches, setRequestedMatches] = useState<Set<string>>(new Set());
+  const [invitedContacts, setInvitedContacts] = useState<Set<string>>(new Set());
 
   const submit = async () => {
     const clean = handle.trim();
@@ -43,6 +54,42 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
+  const importContacts = async () => {
+    if (contactsImported || importingContacts) return;
+    setImportingContacts(true);
+    await new Promise((resolve) => window.setTimeout(resolve, 900));
+    setContactsImported(true);
+    setImportingContacts(false);
+    toast.success(
+      `Imported ${totalMockContactsImported} contacts and found ${mockMatchedFriends.length} friends on FoodTok`,
+    );
+  };
+
+  const requestMatchedFriend = (friend: MockMatchedFriend) => {
+    if (requestedMatches.has(friend.id) || isKnownProfile(friend.handle, friends, incoming, outgoing)) {
+      return;
+    }
+    setRequestedMatches((current) => {
+      const next = new Set(current);
+      next.add(friend.id);
+      return next;
+    });
+    toast.success(`Request sent to @${friend.handle}`);
+  };
+
+  const inviteContact = (contact: MockInviteContact) => {
+    if (invitedContacts.has(contact.id)) return;
+    setInvitedContacts((current) => {
+      const next = new Set(current);
+      next.add(contact.id);
+      return next;
+    });
+    toast.success(`Invite link prepared for ${contact.name}`);
+  };
+
+  const matchedPending = mockMatchedFriends.filter((friend) => requestedMatches.has(friend.id));
+  const availableMatches = mockMatchedFriends.filter((friend) => !requestedMatches.has(friend.id));
+
   return (
     <div className="h-full bg-gray-950 text-white flex flex-col border-l border-gray-800">
       <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800">
@@ -67,6 +114,30 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="p-4 border-b border-gray-800">
+        <div className="mb-4 rounded-2xl border border-gray-800 bg-gray-900/80 p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Find Friends</p>
+              <p className="mt-1 text-xs leading-snug text-gray-400">
+                Import your contacts to find friends already on FoodTok, then invite the rest.
+              </p>
+            </div>
+            <button
+              onClick={importContacts}
+              disabled={importingContacts || contactsImported}
+              className="rounded-full bg-[#fe2c55] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#e02650] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {importingContacts ? "Importing..." : contactsImported ? "Imported" : "Import Contacts"}
+            </button>
+          </div>
+          {contactsImported && (
+            <p className="mt-3 text-[11px] text-gray-400">
+              Imported {totalMockContactsImported} contacts. Found {mockMatchedFriends.length} people on
+              FoodTok and {mockInviteContacts.length} to invite.
+            </p>
+          )}
+        </div>
+
         <label className="text-xs text-gray-400 uppercase tracking-wide">Add by handle</label>
         <div className="flex gap-2 mt-1.5">
           <input
@@ -87,6 +158,76 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-5">
+        {contactsImported && availableMatches.length > 0 && (
+          <Section title={`Found from Contacts (${availableMatches.length})`}>
+            {availableMatches.map((friend) => {
+              const state = getRelationshipState(friend.handle, friends, incoming, outgoing);
+              return (
+                <ContactRow
+                  key={friend.id}
+                  color={friend.color}
+                  name={friend.name}
+                  subtitle={`@${friend.handle} · ${friend.phone}`}
+                  detail={friend.blurb}
+                  action={
+                    state ? (
+                      <StatusPill label={state} />
+                    ) : (
+                      <button
+                        onClick={() => requestMatchedFriend(friend)}
+                        className="rounded-full bg-[#fe2c55] px-3 py-1 text-xs font-semibold text-white hover:bg-[#e02650]"
+                      >
+                        Add
+                      </button>
+                    )
+                  }
+                />
+              );
+            })}
+          </Section>
+        )}
+
+        {contactsImported && matchedPending.length > 0 && (
+          <Section title={`Requested from Contacts (${matchedPending.length})`}>
+            {matchedPending.map((friend) => (
+              <ContactRow
+                key={friend.id}
+                color={friend.color}
+                name={friend.name}
+                subtitle={`@${friend.handle} · ${friend.email}`}
+                detail="Friend request sent from imported contacts."
+                action={<StatusPill label="requested" />}
+              />
+            ))}
+          </Section>
+        )}
+
+        {contactsImported && mockInviteContacts.length > 0 && (
+          <Section title={`Invite Contacts (${mockInviteContacts.length})`}>
+            {mockInviteContacts.map((contact) => (
+              <ContactRow
+                key={contact.id}
+                color="#64748b"
+                name={contact.name}
+                subtitle={`${contact.phone} · ${contact.email}`}
+                detail="Not on FoodTok yet."
+                action={
+                  invitedContacts.has(contact.id) ? (
+                    <StatusPill label="invited" />
+                  ) : (
+                    <button
+                      onClick={() => inviteContact(contact)}
+                      className="rounded-full border border-gray-700 px-3 py-1 text-xs font-semibold text-gray-200 hover:border-gray-500 hover:text-white"
+                    >
+                      Invite
+                    </button>
+                  )
+                }
+              />
+            ))}
+          </Section>
+        )}
+
         {incoming.length > 0 && (
           <Section title={`Incoming (${incoming.length})`}>
             {incoming.map((p) => (
@@ -125,7 +266,7 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
         <Section title={`Friends (${friends.length})`}>
           {friends.length === 0 && (
             <p className="text-gray-500 text-xs">
-              No friends yet. Share your handle:{" "}
+              No friends yet. Import contacts or share your handle:{" "}
               <span className="text-white">@{me?.handle}</span>
             </p>
           )}
@@ -139,6 +280,77 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
       </div>
     </div>
   );
+}
+
+function ContactRow({
+  color,
+  name,
+  subtitle,
+  detail,
+  action,
+}: {
+  color: string;
+  name: string;
+  subtitle: string;
+  detail: string;
+  action: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-gray-800 bg-gray-900/70 px-3 py-3">
+      <Avatar color={color} name={name} />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-white">{name}</p>
+        <p className="truncate text-xs text-gray-400">{subtitle}</p>
+        <p className="mt-1 text-[11px] leading-snug text-gray-500">{detail}</p>
+      </div>
+      <div className="shrink-0">{action}</div>
+    </div>
+  );
+}
+
+function Avatar({ color, name }: { color: string; name: string }) {
+  return (
+    <div
+      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white"
+      style={{ backgroundColor: color }}
+    >
+      {name
+        .split(" ")
+        .slice(0, 2)
+        .map((part) => part[0])
+        .join("")
+        .toUpperCase()}
+    </div>
+  );
+}
+
+function StatusPill({ label }: { label: string }) {
+  return (
+    <span className="rounded-full border border-gray-700 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-300">
+      {label}
+    </span>
+  );
+}
+
+function getRelationshipState(
+  handle: string,
+  friends: { handle: string }[],
+  incoming: { handle: string }[],
+  outgoing: { handle: string }[],
+) {
+  if (friends.some((profile) => profile.handle === handle)) return "friends";
+  if (incoming.some((profile) => profile.handle === handle)) return "incoming";
+  if (outgoing.some((profile) => profile.handle === handle)) return "pending";
+  return null;
+}
+
+function isKnownProfile(
+  handle: string,
+  friends: { handle: string }[],
+  incoming: { handle: string }[],
+  outgoing: { handle: string }[],
+) {
+  return getRelationshipState(handle, friends, incoming, outgoing) !== null;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

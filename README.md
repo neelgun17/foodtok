@@ -1,43 +1,108 @@
-# Food Map — Save TikTok Food Spots
+# Food Map
 
-A TikTok-style "Save to Food Map" MVP. Browse a simulated food review feed, save restaurants to your personal food map, and view them on an interactive map with ordering links.
+A TikTok-inspired food discovery app built for final demo day. The current demo focuses on three cumulative enhancements:
 
-## Setup & Run
+- `Capture Spot`: upload photos or a short video, extract the restaurant details with Gemini, confirm the fields, and save the spot to the map
+- `Find Friends`: create a handle, add friends through Supabase, and see shared spots appear live
+- `Plan My Night`: turn saved spots into a routed night-out itinerary with Gemini tool use
+
+## Setup
 
 ```bash
 cd food-map
 npm install
+cp .env.example .env.local
 npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-## Tech Stack
+## Environment
 
-- **Next.js 16** (App Router) + TypeScript
-- **Tailwind CSS** for styling
-- **Zustand** with localStorage persistence for state
-- **Leaflet / react-leaflet** for interactive maps
-- **react-hot-toast** for notifications
+Only these env vars are required for the current app:
 
-## Demo Walkthrough (5-7 min)
+```bash
+GEMINI_API_KEY=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
 
-1. **Open the Feed** (`/`) — Scroll through 8 TikTok-style food review cards
-2. **Save a spot** — Tap "Save to Food Map" on any card. Toast confirms, button becomes "Saved checkmark"
-3. **Notice the badge** — Bottom nav "Food Map" tab shows saved count
-4. **Open Food Map** (`/map`) — See saved spots on an interactive map + list sidebar
-5. **Click a map pin** — List item highlights and scrolls into view
-6. **Click a list item** — Map flies to that location
-7. **Search** — Type a dish name (e.g., "ramen") or city to filter
-8. **Open details** — Click "Details" on a list item for modal with dishes, notes, ordering links
-9. **Add a note** — Type "get the spicy ramen" and it persists across refresh
-10. **Order links** — Click DoorDash / Uber Eats / Website buttons
-11. **Remove a spot** — Click X on any saved item to unsave
+`GEMINI_API_KEY` powers both capture extraction and `Plan My Night`. The Supabase URL and anon key power anonymous auth, friend requests, shared spots, and realtime updates.
 
-## Known Limitations
+## Stack
 
-- Mock data only (no real TikTok API or Google Places)
-- Map uses OpenStreetMap free tiles
-- No real authentication
-- Ordering links go to search pages, not direct restaurant pages
-- Video thumbnails are emoji placeholders
+- Next.js 16 + React 19 + TypeScript
+- Tailwind CSS
+- Zustand with localStorage persistence
+- Leaflet / react-leaflet
+- Gemini via `@google/genai`
+- Supabase for auth, friend graph, shared spots, and realtime
+
+## Demo Flows
+
+### Capture Spot
+- Open the `+` capture sheet
+- Use the Franklin sample set or upload your own photos/video
+- Confirm the extracted fields
+- Geocode the address and save the spot
+
+### Find Friends
+- Claim a handle
+- Send a friend request from account A to account B
+- Accept on B
+- Share a captured or saved spot and confirm it appears live
+
+### Plan My Night
+- Save a few East Austin spots from the feed
+- Use a brief like `date night Saturday, drinks then dinner then dessert, walkable, under $120 total`
+- Confirm the numbered route, walking summary, and reservation link
+
+## Recommended Demo Seed Spots
+
+Before recording, save these from the feed so the itinerary flow has dependable data:
+
+- `Suerte`
+- `Launderette`
+- `Dolce Neve Gelato`
+- `Intero`
+- `Via 313 East 6th`
+
+These give you strong date-night, dinner, dessert, and walkable-cluster examples in East Austin.
+
+## Verification
+
+Run:
+
+```bash
+npm run lint
+```
+
+If `next build` is blocked by an existing `.next` lock, stop the running dev/build process first or build in a clean session.
+
+## Deploy To Vercel
+
+This app uses `Next.js` App Router API routes under `src/app/api`, so the simplest free deployment is `Vercel Hobby`.
+
+1. Push the repo to GitHub.
+2. Create a Supabase project.
+3. In Supabase Auth, enable anonymous sign-ins.
+4. In the Supabase SQL Editor, run [`supabase/migrations/0001_init.sql`](./supabase/migrations/0001_init.sql).
+5. In Vercel, import the GitHub repo and keep the framework preset as `Next.js`.
+6. Add these production env vars in Vercel:
+
+```bash
+GEMINI_API_KEY=
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+```
+
+7. Deploy on the Hobby tier.
+
+### Post-Deploy Checks
+
+- Open `/` and `/map`.
+- Confirm anonymous sign-in works and you can claim a handle.
+- Confirm friend requests and shared spots update live.
+- Confirm capture extraction works through `/api/extract`.
+- Confirm itinerary generation works through `/api/plan`.
+- Confirm address lookup works through `/api/geocode`.

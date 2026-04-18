@@ -17,10 +17,10 @@ type SortOption = "newest" | "oldest" | "name" | "price-low" | "price-high" | "r
 type TriedFilter = "all" | "tried" | "want-to-go";
 
 function MapPageInner() {
-  const { savedSpots, removeSpot, toggleTried, setRating, collections, setCollection } =
-    useFoodMapStore();
+  const { savedSpots, removeSpot, toggleTried, setRating, collections } = useFoodMapStore();
   const allRemoteSpots = useFriendsStore((s) => s.spots);
   const me = useFriendsStore((s) => s.me);
+  const socialAvailable = useFriendsStore((s) => s.socialAvailable);
   const friendSpots = useMemo(
     () => (me ? allRemoteSpots.filter((s) => s.owner !== me.id) : allRemoteSpots),
     [allRemoteSpots, me],
@@ -213,7 +213,7 @@ function MapPageInner() {
   }
 
   return (
-    <div className="min-h-screen bg-black flex flex-col">
+    <div className="isolate min-h-screen bg-black flex flex-col">
       {/* Header */}
       <div className="bg-black/90 backdrop-blur border-b border-gray-800 px-4 py-3">
         <div className="flex items-center justify-between">
@@ -225,16 +225,20 @@ function MapPageInner() {
           </div>
           <div className="flex items-center gap-2">
             <button
+              disabled={!socialAvailable}
               onClick={() => { setFeedOpen((v) => !v); setFriendsOpen(false); }}
-              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full transition-colors ${
+              title={socialAvailable ? "Discovery feed" : "Configure Supabase to enable social features"}
+              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 feedOpen ? "bg-[#fe2c55] text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
               }`}
             >
               📡 Feed
             </button>
             <button
+              disabled={!socialAvailable}
               onClick={() => { setFriendsOpen((v) => !v); setFeedOpen(false); }}
-              className={`relative flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full transition-colors ${
+              title={socialAvailable ? "Friends" : "Configure Supabase to enable social features"}
+              className={`relative flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 friendsOpen ? "bg-[#fe2c55] text-white" : "bg-gray-800 text-gray-300 hover:bg-gray-700"
               }`}
             >
@@ -434,7 +438,7 @@ function MapPageInner() {
       {/* Content */}
       <div className="flex-1 flex flex-col lg:flex-row w-full">
         {/* Map */}
-        <div className="h-[40vh] lg:h-auto lg:flex-1 p-3">
+        <div className="relative z-0 h-[40vh] lg:h-auto lg:flex-1 p-3">
           <MapView
             spots={filtered}
             activeSpot={activeSpot}

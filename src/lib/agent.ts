@@ -9,7 +9,10 @@ import {
 
 const SYSTEM_INSTRUCTION = `You are a local-nightlife planner. Given a user's brief and their saved restaurants, build a 2-4 stop itinerary using ONLY those saved spots.
 Rules:
-- Respect walkability (stops should be in the same city/neighborhood when possible), the user's budget, and any free-form hours text.
+- Respect walkability, the user's budget, and any free-form hours text.
+- Prefer actual coordinate proximity over exact neighborhood-name matches. Adjacent neighborhoods can still count as walkable if the overall route stays compact.
+- Unless the user gives an exact time, assume a dinner/night-out plan starts in the early evening. Do not reject a good nearby stop only because its neighborhood label differs slightly from the user's wording.
+- When multiple spots are plausible, prefer creating a compact 2-stop or 3-stop plan over failing just because the perfect neighborhood match does not exist.
 - Use tools: call get_walking_route ONCE on the final ordered stops, then build_reservation_link for the sit-down dinner stop if applicable.
 - After tools return, produce a final plain-text summary with a one-sentence rationale per stop, prefixed by "1.", "2.", etc.
 - If no valid plan exists, say so briefly and suggest how the user could change the brief. Do NOT call tools in that case.
@@ -24,6 +27,16 @@ export type PlanEvent =
   | { type: "reservation"; savedId: string; url: string; provider: string }
   | { type: "final"; summary: string }
   | { type: "error"; message: string };
+
+interface FallbackPlan {
+  orderedSavedIds: string[];
+  polyline: LatLng[];
+  distance_m: number;
+  duration_s: number;
+  degraded?: boolean;
+  reservation?: { savedId: string; url: string; provider: string };
+  summary: string;
+}
 
 interface CompactSpot {
   savedId: string;
@@ -55,6 +68,189 @@ function compact(spots: SavedSpot[]): CompactSpot[] {
       city: s.location.city,
       hasReservationSite: /resy\.com|opentable\.com/i.test(s.websiteUrl ?? ""),
     }));
+}
+
+function haversine(a: LatLng, b: LatLng): number {
+  const R = 6371000;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function combinations<T>(items: T[], size: number): T[][] {
+  if (size === 0) return [[]];
+  if (items.length < size) return [];
+  if (size === 1) return items.map((item) => [item]);
+
+  const result: T[][] = [];
+  items.forEach((item, index) => {
+    const tails = combinations(items.slice(index + 1), size - 1);
+    tails.forEach((tail) => result.push([item, ...tail]));
+  });
+  return result;
+}
+
+function isNightBrief(brief: string): boolean {
+  return /night|date|dinner|drinks|dessert|evening|tonight/i.test(brief);
+}
+
+function closesLateEnough(hours?: string): boolean {
+  if (!hours) return true;
+  const match = hours.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s*$/i);
+  if (!match) return true;
+  let hour = parseInt(match[1], 10);
+  const minute = parseInt(match[2] ?? "0", 10);
+  const suffix = match[3].toLowerCase();
+  if (suffix === "pm" && hour !== 12) hour += 12;
+  if (suffix === "am" && hour === 12) hour = 0;
+  return hour > 20 || (hour === 20 && minute >= 0) || hour < 4;
+}
+
+function includesDessert(spot: SavedSpot): boolean {
+  return (
+    /dessert|gelato|ice cream|bakery|sweet/i.test(spot.cuisine) ||
+    spot.dishes.some((dish) => /dessert|gelato|ice cream|cake|tiramisu|pudding/i.test(dish))
+  );
+}
+
+function clusterScore(cluster: SavedSpot[], brief: string): number {
+  let score = 0;
+  for (let i = 0; i < cluster.length; i++) {
+    for (let j = i + 1; j < cluster.length; j++) {
+      score += haversine(
+        [cluster[i].location.lat, cluster[i].location.lng],
+        [cluster[j].location.lat, cluster[j].location.lng],
+      );
+    }
+  }
+
+  if (isNightBrief(brief)) {
+    cluster.forEach((spot) => {
+      if (!closesLateEnough(spot.hours)) score += 5000;
+    });
+  }
+
+  if (/dessert/i.test(brief) && !cluster.some(includesDessert)) score += 1500;
+  if (/date|dinner/i.test(brief) && !cluster.some((spot) => (spot.priceLevel ?? 1) >= 2)) {
+    score += 800;
+  }
+
+  return score;
+}
+
+function orderCluster(cluster: SavedSpot[]): SavedSpot[] {
+  if (cluster.length <= 2) {
+    return [...cluster].sort((a, b) => a.location.lng - b.location.lng);
+  }
+
+  const remaining = [...cluster];
+  remaining.sort((a, b) => a.location.lng - b.location.lng);
+  const ordered = [remaining.shift()!];
+
+  while (remaining.length > 0) {
+    const last = ordered[ordered.length - 1];
+    remaining.sort((a, b) => {
+      const da = haversine([last.location.lat, last.location.lng], [a.location.lat, a.location.lng]);
+      const db = haversine([last.location.lat, last.location.lng], [b.location.lat, b.location.lng]);
+      return da - db;
+    });
+    ordered.push(remaining.shift()!);
+  }
+
+  return ordered;
+}
+
+function pickDinnerStop(cluster: SavedSpot[], brief: string): SavedSpot | null {
+  const nonDessert = cluster.filter((spot) => !includesDessert(spot));
+  const pool = nonDessert.length > 0 ? nonDessert : cluster;
+  if (pool.length === 0) return null;
+
+  const ranked = [...pool].sort((a, b) => {
+    const aScore = (a.priceLevel ?? 1) + (a.websiteUrl ? 0.5 : 0);
+    const bScore = (b.priceLevel ?? 1) + (b.websiteUrl ? 0.5 : 0);
+    return bScore - aScore;
+  });
+
+  if (/ramen|taco|casual|cheap/i.test(brief) && ranked.length > 1) {
+    return ranked[Math.min(1, ranked.length - 1)];
+  }
+  return ranked[0];
+}
+
+async function buildFallbackPlan(brief: string, spots: SavedSpot[]): Promise<FallbackPlan | null> {
+  const candidates = spots.filter((s) => s.location.lat !== 0 || s.location.lng !== 0);
+  if (candidates.length < 2) return null;
+
+  const targetSizes = /2-3|2 or 3|two or three/i.test(brief)
+    ? [3, 2]
+    : /3|three/i.test(brief)
+      ? [3, 2]
+      : [2, 3];
+
+  let best: SavedSpot[] | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+
+  for (const size of targetSizes) {
+    for (const combo of combinations(candidates, Math.min(size, candidates.length))) {
+      if (combo.length < 2) continue;
+      const score = clusterScore(combo, brief);
+      if (score < bestScore) {
+        best = combo;
+        bestScore = score;
+      }
+    }
+    if (best) break;
+  }
+
+  if (!best) return null;
+
+  const ordered = orderCluster(best);
+  const { result, orderedSavedIds } = await executeGetWalkingRoute(
+    { stops: ordered.map((spot) => ({ savedId: spot.savedId })) },
+    spots,
+  );
+
+  const dinnerStop = pickDinnerStop(ordered, brief);
+  const reservation = dinnerStop
+    ? {
+        savedId: dinnerStop.savedId,
+        ...executeBuildReservationLink(
+          {
+            savedId: dinnerStop.savedId,
+            party_size: 2,
+            time_iso: new Date().toISOString(),
+          },
+          spots,
+        ),
+      }
+    : undefined;
+
+  const summary = ordered
+    .map((spot, index) => {
+      const reasons: string[] = [];
+      if (index === 0) reasons.push("easy first stop");
+      if (includesDessert(spot)) reasons.push("good dessert finish");
+      if ((spot.priceLevel ?? 1) >= 3) reasons.push("strong date-night pick");
+      if (spot.hours) reasons.push(`hours: ${spot.hours}`);
+      return `${index + 1}. ${spot.restaurantName} for ${reasons.join(", ") || "a compact nearby stop"}.`;
+    })
+    .join("\n");
+
+  return {
+    orderedSavedIds,
+    polyline: result.polyline,
+    distance_m: result.distance_m,
+    duration_s: result.duration_s,
+    degraded: result.degraded,
+    reservation,
+    summary,
+  };
 }
 
 export async function* runPlanAgent(
@@ -112,6 +308,29 @@ export async function* runPlanAgent(
     const text = response.text ?? "";
 
     if (calls.length === 0) {
+      const fallback = await buildFallbackPlan(brief, spots);
+      if (fallback) {
+        yield { type: "status", message: "Using local fallback planner…" };
+        yield { type: "stops", orderedSavedIds: fallback.orderedSavedIds };
+        yield {
+          type: "route",
+          polyline: fallback.polyline,
+          distance_m: fallback.distance_m,
+          duration_s: fallback.duration_s,
+          degraded: fallback.degraded,
+        };
+        if (fallback.reservation) {
+          yield {
+            type: "reservation",
+            savedId: fallback.reservation.savedId,
+            url: fallback.reservation.url,
+            provider: fallback.reservation.provider,
+          };
+        }
+        yield { type: "final", summary: fallback.summary };
+        return;
+      }
+
       const finalText = text.trim() || "No plan produced.";
       yield { type: "final", summary: finalText };
       return;

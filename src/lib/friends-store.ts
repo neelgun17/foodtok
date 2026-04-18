@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
+import { getErrorMessage } from "./errors";
 import { supabase, Profile, RemoteSpot, FriendRequest } from "./supabase";
 import { getOrSignInAnon, getProfile, createProfile } from "./session";
 
@@ -13,6 +14,7 @@ export interface FriendSpot extends RemoteSpot {
 interface FriendsStore {
   me: Profile | null;
   needsHandle: boolean;
+  socialAvailable: boolean;
   friends: Profile[];
   spots: FriendSpot[];
   incoming: Profile[];
@@ -32,6 +34,7 @@ interface FriendsStore {
 export const useFriendsStore = create<FriendsStore>((set, get) => ({
   me: null,
   needsHandle: false,
+  socialAvailable: true,
   friends: [],
   spots: [],
   incoming: [],
@@ -40,7 +43,7 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
   error: null,
 
   init: async () => {
-    if (get().loading || get().me) return;
+    if (get().loading || get().me || !get().socialAvailable) return;
     set({ loading: true, error: null });
     try {
       const userId = await getOrSignInAnon();
@@ -53,7 +56,13 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
       await hydrate();
       await subscribeRealtime();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      const message = getErrorMessage(err);
+      const setupMessage = getSocialSetupMessage(message);
+      set({
+        error: setupMessage ?? message,
+        socialAvailable: !setupMessage,
+        needsHandle: false,
+      });
     } finally {
       set({ loading: false });
     }
@@ -68,7 +77,13 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
       await hydrate();
       await subscribeRealtime();
     } catch (err) {
-      set({ error: err instanceof Error ? err.message : String(err) });
+      const message = getErrorMessage(err);
+      const setupMessage = getSocialSetupMessage(message);
+      set({
+        error: setupMessage ?? message,
+        socialAvailable: !setupMessage,
+        needsHandle: false,
+      });
       throw err;
     } finally {
       set({ loading: false });
@@ -121,7 +136,6 @@ async function hydrate() {
   const me = useFriendsStore.getState().me;
   if (!me) return;
 
-  // Friends: rows in friendships where a = me; resolve "b" to profiles
   const { data: friendRows } = await s
     .from("friendships")
     .select("b")
@@ -132,7 +146,6 @@ async function hydrate() {
     ? await s.from("profiles").select("id,handle,color").in("id", friendIds)
     : { data: [] as Profile[] };
 
-  // Friend requests, split by direction
   const { data: reqs } = await s
     .from("friend_requests")
     .select("from_id,to_id,created_at")
@@ -149,7 +162,6 @@ async function hydrate() {
   const incoming = incomingIds.map((id) => profMap.get(id)).filter(Boolean) as Profile[];
   const outgoing = outgoingIds.map((id) => profMap.get(id)).filter(Boolean) as Profile[];
 
-  // Spots: RLS filters to self + friends automatically
   const { data: spotRows } = await s
     .from("spots")
     .select("*")
@@ -207,8 +219,6 @@ function applySpotChange(payload: RealtimePostgresChangesPayload<RemoteSpot>) {
 
   const decorate = (row: RemoteSpot): FriendSpot => {
     const owner = ownerMap.get(row.owner);
-    // Unknown owner = a friend-request just accepted whose profile isn't in our map yet.
-    // Fall back to a full hydrate so we pick up the profile.
     if (!owner) {
       hydrate();
     }
@@ -236,4 +246,23 @@ function applySpotChange(payload: RealtimePostgresChangesPayload<RemoteSpot>) {
       spots: state.spots.filter((s) => s.id !== oldId),
     });
   }
+}
+
+function getSocialSetupMessage(message: string): string | null {
+  if (message.includes("Missing NEXT_PUBLIC_SUPABASE_URL")) {
+    return "Friends features are disabled until Supabase env vars are configured.";
+  }
+  if (/Failed to fetch/i.test(message) || /NetworkError/i.test(message)) {
+    return "Friends features are disabled because Supabase is unreachable. Check the project URL, anon key, and that the Supabase project is running.";
+  }
+  if (/Anonymous sign-ins are disabled/i.test(message)) {
+    return "Friends features are disabled until anonymous sign-ins are enabled in Supabase Auth.";
+  }
+  if (
+    /Could not find the table 'public\.profiles' in the schema cache/i.test(message) ||
+    /relation "public\.profiles" does not exist/i.test(message)
+  ) {
+    return "Friends features are disabled until the Supabase migration is applied.";
+  }
+  return null;
 }

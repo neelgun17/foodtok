@@ -119,7 +119,7 @@ export default function MapView({ spots, activeSpot, onMarkerClick, route, frien
     <MapContainer
       center={[39.5, -98.35]}
       zoom={4}
-      className="w-full h-full rounded-xl"
+      className="relative z-0 w-full h-full rounded-xl"
       style={{ minHeight: "300px" }}
     >
       <TileLayer

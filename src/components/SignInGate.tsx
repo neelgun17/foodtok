@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useFriendsStore } from "@/lib/friends-store";
+import { getErrorMessage } from "@/lib/errors";
 import { randomColor } from "@/lib/session";
 
 const COLORS = [
@@ -10,7 +11,7 @@ const COLORS = [
 ];
 
 export default function SignInGate({ children }: { children: React.ReactNode }) {
-  const { me, needsHandle, init, claimHandle, error, loading } = useFriendsStore();
+  const { me, needsHandle, socialAvailable, init, claimHandle, error, loading } = useFriendsStore();
   const [handle, setHandle] = useState("");
   const [color, setColor] = useState(randomColor());
   const [submitting, setSubmitting] = useState(false);
@@ -31,20 +32,31 @@ export default function SignInGate({ children }: { children: React.ReactNode }) 
     try {
       await claimHandle(clean, color);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = getErrorMessage(err);
       setLocalErr(msg.includes("duplicate") ? "Handle is taken" : msg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  if (me) return <>{children}</>;
+  if (me || !socialAvailable) {
+    return (
+      <>
+        {children}
+        {!socialAvailable && error && (
+          <div className="fixed bottom-4 right-4 z-[100] max-w-sm rounded-2xl border border-amber-500/30 bg-gray-950/95 px-4 py-3 text-sm text-amber-100 shadow-2xl backdrop-blur">
+            <p className="font-semibold text-amber-300">Friends offline</p>
+            <p className="mt-1 leading-snug text-gray-200">{error}</p>
+          </div>
+        )}
+      </>
+    );
+  }
 
   return (
     <>
-      {/* still render children so the store inits, but blur behind the modal */}
-      <div className="fixed inset-0 z-[90] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-gray-900 border border-gray-700 rounded-2xl max-w-sm w-full p-6 text-white">
+      <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="relative z-[10000] bg-gray-900 border border-gray-700 rounded-2xl max-w-sm w-full p-6 text-white shadow-2xl">
           <h2 className="text-xl font-bold mb-1">Join the map</h2>
           <p className="text-sm text-gray-400 mb-4">
             Pick a handle and color. Friends will see your pins in this color.
@@ -78,7 +90,9 @@ export default function SignInGate({ children }: { children: React.ReactNode }) 
                 </div>
               </div>
               {(localErr || error) && (
-                <p className="text-red-400 text-xs mb-2">{localErr || error}</p>
+                <div className="mb-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                  <p className="text-red-300 text-sm leading-snug">{localErr || error}</p>
+                </div>
               )}
               <button
                 onClick={submit}

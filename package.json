@@ -9,7 +9,6 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.90.0",
     "@google/genai": "^1.50.1",
     "@supabase/supabase-js": "^2.103.3",
     "leaflet": "^1.9.4",

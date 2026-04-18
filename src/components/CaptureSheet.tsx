@@ -2,11 +2,12 @@
 
 import { useRef, useState } from "react";
 import toast from "react-hot-toast";
+import { demoCaptureSets } from "@/data/demoCaptureSets";
 import { useFoodMapStore } from "@/lib/store";
 import { useFriendsStore } from "@/lib/friends-store";
 import type { ExtractedSpot } from "@/lib/ai";
 
-type Stage = "pick" | "extracting" | "confirm" | "saving";
+type Stage = "pick" | "library" | "extracting" | "confirm" | "saving";
 
 interface Props {
   open: boolean;
@@ -29,6 +30,7 @@ export default function CaptureSheet({ open, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  const sampleSet = demoCaptureSets[0];
 
   if (!open) return null;
 
@@ -64,6 +66,34 @@ export default function CaptureSheet({ open, onClose }: Props) {
     try {
       const frames = await extractKeyframes(file, 3);
       await runExtraction(frames);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStage("pick");
+    }
+  };
+
+  const handleDemoSet = async (setId: string) => {
+    const demo = demoCaptureSets.find((item) => item.id === setId);
+    if (!demo) return;
+
+    setStage("extracting");
+    setError(null);
+    previews.forEach((url) => URL.revokeObjectURL(url));
+    setPreviews([]);
+
+    try {
+      const files = await Promise.all(
+        demo.images.map(async (image) => {
+          const res = await fetch(image.url, { cache: "no-store" });
+          if (!res.ok) {
+            throw new Error(`Couldn't load demo image: ${image.filename}`);
+          }
+          const blob = await res.blob();
+          return new File([blob], image.filename, { type: image.mediaType });
+        }),
+      );
+
+      await runExtraction(files);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
       setStage("pick");
@@ -180,7 +210,7 @@ export default function CaptureSheet({ open, onClose }: Props) {
           {stage === "pick" && (
             <>
               <p className="text-sm text-gray-400">
-                Record a clip or upload photos. Claude will pull out the restaurant name, dishes, and address.
+                Record a clip or upload photos. Gemini will pull out the restaurant name, dishes, and address.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 <button
@@ -191,7 +221,7 @@ export default function CaptureSheet({ open, onClose }: Props) {
                   Record / Video
                 </button>
                 <button
-                  onClick={() => photoInputRef.current?.click()}
+                  onClick={() => setStage("library")}
                   className="bg-gray-800 hover:bg-gray-700 rounded-xl py-6 px-3 text-center font-semibold"
                 >
                   <div className="text-3xl mb-1">📷</div>
@@ -218,10 +248,71 @@ export default function CaptureSheet({ open, onClose }: Props) {
             </>
           )}
 
+          {stage === "library" && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-white">Select Photos</p>
+                  <p className="text-xs text-gray-400">
+                    Review the selected set or upload your own photos from device.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setStage("pick")}
+                  className="rounded-full bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold"
+                >
+                  Back
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-[#fe2c55]/40 bg-gray-950/70 p-3 space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{sampleSet.title}</p>
+                    <p className="text-xs text-gray-400">{sampleSet.images.length} selected</p>
+                  </div>
+                  <button
+                    onClick={() => handleDemoSet(sampleSet.id)}
+                    className="rounded-full bg-[#fe2c55] hover:bg-[#e02650] px-3 py-1.5 text-xs font-semibold"
+                  >
+                    Continue
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {sampleSet.images.map((image) => (
+                    <div key={image.url} className="relative">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={image.url}
+                        alt=""
+                        className="h-24 w-full rounded-lg object-cover ring-2 ring-[#fe2c55]"
+                      />
+                      <div className="absolute right-2 top-2 rounded-full bg-[#fe2c55] px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        Selected
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                onClick={() => photoInputRef.current?.click()}
+                className="w-full rounded-xl bg-gray-800 hover:bg-gray-700 py-3 text-sm font-semibold"
+              >
+                Upload From Device
+              </button>
+
+              <p className="text-[11px] text-gray-500">
+                Source notes live in <code>public/demo-capture/franklin/ATTRIBUTION.txt</code>.
+              </p>
+              {error && <p className="text-red-400 text-sm">{error}</p>}
+            </div>
+          )}
+
           {stage === "extracting" && (
             <div className="py-10 text-center space-y-3">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#fe2c55] mx-auto" />
-              <p className="text-gray-300">Analyzing with Claude…</p>
+              <p className="text-gray-300">Analyzing with AI</p>
               {previews.length > 0 && (
                 <div className="flex gap-2 justify-center flex-wrap pt-2">
                   {previews.map((p, i) => (
