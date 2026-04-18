@@ -17,6 +17,7 @@ interface FriendsStore {
   socialAvailable: boolean;
   friends: Profile[];
   spots: FriendSpot[];
+  demoSpots: FriendSpot[];
   incoming: Profile[];
   outgoing: Profile[];
   loading: boolean;
@@ -29,6 +30,7 @@ interface FriendsStore {
   rejectRequest: (fromId: string) => Promise<void>;
   publishSpot: (input: Omit<RemoteSpot, "id" | "owner" | "created_at">) => Promise<void>;
   unpublishSpot: (id: string) => Promise<void>;
+  addDemoFriendSpots: (spots: FriendSpot[]) => void;
 }
 
 export const useFriendsStore = create<FriendsStore>((set, get) => ({
@@ -37,6 +39,7 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
   socialAvailable: true,
   friends: [],
   spots: [],
+  demoSpots: [],
   incoming: [],
   outgoing: [],
   loading: false,
@@ -128,6 +131,14 @@ export const useFriendsStore = create<FriendsStore>((set, get) => ({
   unpublishSpot: async (id: string) => {
     const { error } = await supabase().from("spots").delete().eq("id", id);
     if (error) throw error;
+  },
+
+  addDemoFriendSpots: (spots: FriendSpot[]) => {
+    const existing = get().demoSpots;
+    const existingIds = new Set(existing.map((s) => s.id));
+    const fresh = spots.filter((s) => !existingIds.has(s.id));
+    if (fresh.length === 0) return;
+    set({ demoSpots: [...fresh, ...existing] });
   },
 }));
 

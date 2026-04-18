@@ -95,3 +95,68 @@ export const mockInviteContacts: MockInviteContact[] = [
 
 export const totalMockContactsImported =
   mockMatchedFriends.length + mockInviteContacts.length;
+
+export type MockFriendSpot = {
+  id: string;
+  name: string;
+  cuisine: string;
+  lat: number;
+  lng: number;
+  neighborhood: string;
+  city: string;
+  dishes: string[];
+  vibe_tags: string[];
+  price_tier: number;
+  notes: string;
+  website_url: string | null;
+  created_at: string;
+};
+
+// Maya's saved spots — Austin, late-night pasta + patio leaning.
+export const mockMayaSpots: MockFriendSpot[] = [
+  {
+    id: "demo-maya-spot-1",
+    name: "L'Oca d'Oro",
+    cuisine: "Italian",
+    lat: 30.3006,
+    lng: -97.7062,
+    neighborhood: "Mueller",
+    city: "Austin",
+    dishes: ["Cacio e pepe", "Bucatini all'amatriciana"],
+    vibe_tags: ["late-night", "date-night"],
+    price_tier: 3,
+    notes: "Sit at the bar after 9pm — half-price pasta specials.",
+    website_url: "https://locadoroaustin.com",
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 6).toISOString(),
+  },
+  {
+    id: "demo-maya-spot-2",
+    name: "Juniper",
+    cuisine: "Italian",
+    lat: 30.2654,
+    lng: -97.7217,
+    neighborhood: "East Austin",
+    city: "Austin",
+    dishes: ["Agnolotti", "Burrata"],
+    vibe_tags: ["patio", "date-night"],
+    price_tier: 3,
+    notes: "Patio is the move — ask for the back tables.",
+    website_url: "https://juniperaustin.com",
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 30).toISOString(),
+  },
+  {
+    id: "demo-maya-spot-3",
+    name: "Contigo",
+    cuisine: "American",
+    lat: 30.298,
+    lng: -97.6827,
+    neighborhood: "East Austin",
+    city: "Austin",
+    dishes: ["Green beans", "Rabbit & dumplings"],
+    vibe_tags: ["patio", "casual"],
+    price_tier: 2,
+    notes: "Huge patio, dog-friendly, stays open late on weekends.",
+    website_url: "https://contigotexas.com",
+    created_at: new Date(Date.now() - 1000 * 60 * 60 * 54).toISOString(),
+  },
+];

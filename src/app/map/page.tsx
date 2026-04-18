@@ -19,12 +19,13 @@ type TriedFilter = "all" | "tried" | "want-to-go";
 function MapPageInner() {
   const { savedSpots, removeSpot, toggleTried, setRating, collections } = useFoodMapStore();
   const allRemoteSpots = useFriendsStore((s) => s.spots);
+  const demoSpots = useFriendsStore((s) => s.demoSpots);
   const me = useFriendsStore((s) => s.me);
   const socialAvailable = useFriendsStore((s) => s.socialAvailable);
-  const friendSpots = useMemo(
-    () => (me ? allRemoteSpots.filter((s) => s.owner !== me.id) : allRemoteSpots),
-    [allRemoteSpots, me],
-  );
+  const friendSpots = useMemo(() => {
+    const live = me ? allRemoteSpots.filter((s) => s.owner !== me.id) : allRemoteSpots;
+    return [...demoSpots, ...live];
+  }, [allRemoteSpots, demoSpots, me]);
   const incomingCount = useFriendsStore((s) => s.incoming.length);
   const [activeSpot, setActiveSpot] = useState<SavedSpot | null>(null);
   const [modalSpot, setModalSpot] = useState<SavedSpot | null>(null);

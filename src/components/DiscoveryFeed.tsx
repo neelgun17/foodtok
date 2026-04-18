@@ -21,7 +21,8 @@ export default function DiscoveryFeed({
   onPick: (spot: FriendSpot) => void;
   onClose: () => void;
 }) {
-  const { spots, me } = useFriendsStore();
+  const { spots: liveSpots, demoSpots, me } = useFriendsStore();
+  const spots = [...demoSpots, ...liveSpots];
 
   return (
     <div className="h-full bg-gray-950 text-white flex flex-col border-l border-gray-800">

@@ -1,21 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import {
   mockInviteContacts,
   mockMatchedFriends,
+  mockMayaSpots,
   totalMockContactsImported,
   type MockInviteContact,
   type MockMatchedFriend,
 } from "@/data/mockContacts";
-import { useFriendsStore } from "@/lib/friends-store";
+import { useFriendsStore, type FriendSpot } from "@/lib/friends-store";
 
 const DEMO_AUTO_ACCEPT_HANDLE = "mayaeats";
 
 export default function FriendsPanel({ onClose }: { onClose: () => void }) {
-  const { me, friends, incoming, outgoing, sendRequest, acceptRequest, rejectRequest } =
-    useFriendsStore();
+  const {
+    me,
+    friends,
+    incoming,
+    outgoing,
+    sendRequest,
+    acceptRequest,
+    rejectRequest,
+    addDemoFriendSpots,
+  } = useFriendsStore();
   const [handle, setHandle] = useState("");
   const [busy, setBusy] = useState(false);
   const [contactsImported, setContactsImported] = useState(false);
@@ -23,6 +32,31 @@ export default function FriendsPanel({ onClose }: { onClose: () => void }) {
   const [requestedMatches, setRequestedMatches] = useState<Set<string>>(new Set());
   const [invitedContacts, setInvitedContacts] = useState<Set<string>>(new Set());
   const [demoAcceptedMatches, setDemoAcceptedMatches] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    const maya = mockMatchedFriends.find((f) => f.handle === DEMO_AUTO_ACCEPT_HANDLE);
+    if (!maya) return;
+    if (!demoAcceptedMatches.has(maya.id)) return;
+    const spots: FriendSpot[] = mockMayaSpots.map((spot) => ({
+      id: spot.id,
+      owner: maya.id,
+      name: spot.name,
+      cuisine: spot.cuisine,
+      lat: spot.lat,
+      lng: spot.lng,
+      neighborhood: spot.neighborhood,
+      city: spot.city,
+      dishes: spot.dishes,
+      vibe_tags: spot.vibe_tags,
+      price_tier: spot.price_tier,
+      notes: spot.notes,
+      website_url: spot.website_url,
+      created_at: spot.created_at,
+      ownerHandle: maya.handle,
+      ownerColor: maya.color,
+    }));
+    addDemoFriendSpots(spots);
+  }, [demoAcceptedMatches, addDemoFriendSpots]);
 
   const submit = async () => {
     const clean = handle.trim();
